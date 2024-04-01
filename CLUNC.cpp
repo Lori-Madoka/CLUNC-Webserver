@@ -65,6 +65,7 @@ void handleRequest(int clientSocket) {
 }
 
 int main() {
+    chroot("PATH_TO_ROOT")	
     // Create socket
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket == -1) {
