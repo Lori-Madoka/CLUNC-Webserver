@@ -38,23 +38,50 @@ void handleRequest(int clientSocket) {
 	}
     }
     else if (p != nullptr && strcmp(p, "POST") == 0) {
-	//If request is a post request its time to NOT use a library for yippee
-	//Extract filename
-	size_t filenameStart = std::string(buffer).find("filename=\"") + 10;
-	size_t filenameEnd = std::string(buffer).find("\"", filenameStart);
-	filename = std::string(buffer).substr(filenameStart, filenameEnd - filenameStart);
-	
-	//Grab content of file to upload
-	std::string content(buffer + bytesRead);
-	size_t contentStart = content.find("\r\n\r\n") + 4;
-	content = content.substr(contentStart);
+    // Extract filename from request headers
+    std::string request(buffer); // Convert buffer to string for easier manipulation
+    size_t filenameStart = request.find("Select File");
+    if (filenameStart != std::string::npos) { // Check if field name is found
+        filenameStart = request.find("filename=\"", filenameStart) + 10;
+        size_t filenameEnd = request.find("\"", filenameStart);
+        if (filenameStart != std::string::npos && filenameEnd != std::string::npos) { // Check if both delimiters are found
+            std::string filename = request.substr(filenameStart, filenameEnd - filenameStart);
+            
+            // Read until the end of the request body to get file content
+            size_t contentStart = request.find("\r\n\r\n");
+            if (contentStart != std::string::npos) { // Check if content delimiter is found
+                contentStart += 4; // Move past the delimiter to the start of content
+                std::string content = request.substr(contentStart);
 
-	//Make sure file isnt extra Thicc
-	if (content.size() > MAX_FILE_SIZE) {
-		std::cerr << "Error: File size a bit THICC" << std::endl;
-		close(clientSocket);
-		return;
-	}
+                // Save file
+                std::ofstream outputFile(filename, std::ios::binary);
+                if (outputFile) {
+                    outputFile.write(content.c_str(), content.size());
+                    outputFile.close();
+                    std::cout << "File successfully saved as: " << filename << std::endl;
+                } 
+		else {
+                    std::cerr << "Error: Unable to save file " << filename << std::endl;
+                }
+            } 
+	    else {
+                std::cerr << "Error: No content found in POST request" << std::endl;
+            }
+        } 
+	else {
+            std::cerr << "Error: Filename not found in POST request" << std::endl;
+        }
+    } 
+    else {
+        std::cerr << "Error: Field name not found in POST request" << std::endl;
+    }
+
+    // Send response to client
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    send(clientSocket, response.c_str(), response.size(), 0);
+    close(clientSocket);
+    return;
+}
 	
 	//Save file
 	std::ofstream outputFile(filename, std::ios::binary);
