@@ -16,15 +16,29 @@
 const size_t MAX_FILE_SIZE = 26214400; //limits to 25MB
 
 void handleRequest(int clientSocket) {
-    // look at request from the client
-    char buffer[1024] = {0};
-    ssize_t bytesRead = read(clientSocket, buffer, 1024);
-    if (bytesRead == -1) {
-        perror("Error reading from client socket");
-        close(clientSocket);
-        return;
+    const int bufferSize = 2048;
+    char buffer[bufferSize] = {0};
+    std::string requestData;
+    // Chunking!!
+    while (true) {
+        ssize_t bytesRead = read(clientSocket, buffer, bufferSize - 1);
+        if (bytesRead == -1) {
+            perror("Error reading from client socket");
+            close(clientSocket);
+            return;
+        }
+        if (bytesRead == 0) {
+            break;
+        }
+        // Append received data to requestData string
+        requestData.append(buffer, bytesRead);
+        // Check if the requestData string contains the complete request
+        if (requestData.find("\r\n\r\n") != std::string::npos) {
+            break;
+        }
     }
-    printf("Request:\n%s\n", buffer);
+
+    printf("Request:\n%s\n", requestData.c_str());
 
     // Extract the requested filename from the request (assuming GET request)
     std::string filename = "index.html"; // Default filename
