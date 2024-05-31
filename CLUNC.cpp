@@ -97,24 +97,12 @@ void handleRequest(int clientSocket) {
     return;
 }
 	
-	//Save file
-	std::ofstream outputFile(filename, std::ios::binary);
-	if (outputFile) {
-		outputFile.write(content.c_str(), content.size());
-		outputFile.close();
-		std::cout << "File successfully saved as: " << filename << std::endl;
-	}
-	else {
-		std::cerr << "Error: Did not save file " << filename << std::endl;
-	}
-
-	//Acc send the client a response
-	std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-	send(clientSocket, response.c_str(), response.size(), 0);
-	close(clientSocket);
-	return;
-    }
-
+    //Acc send the client a response
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    send(clientSocket, response.c_str(), response.size(), 0);
+    close(clientSocket);
+    return;
+    
     // Open the requested file
     std::ifstream file(filename);
     if (!file) {
