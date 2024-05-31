@@ -143,7 +143,7 @@ void handleRequest(int clientSocket) {
 
 
 int main() {
-    chroot("/home/Lori/recoveryTestingCpp");
+    chroot(".");
     // Create socket
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket == -1) {
