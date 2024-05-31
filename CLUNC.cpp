@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <regex>
 
 const size_t MAX_FILE_SIZE = 26214400; //limits to 25MB
 
@@ -19,6 +20,7 @@ void handleRequest(int clientSocket) {
     const int bufferSize = 2048;
     char buffer[bufferSize] = {0};
     std::string requestData;
+
     // Chunking!!
     while (true) {
         ssize_t bytesRead = read(clientSocket, buffer, bufferSize - 1);
@@ -42,52 +44,67 @@ void handleRequest(int clientSocket) {
 
     // Extract the requested filename from the request (assuming GET request)
     std::string filename = "index.html"; // Default filename
-    char *p = strtok(buffer, " ");
+    char *p = strtok(const_cast<char *>(requestData.c_str()), " ");
     if (p != nullptr && strcmp(p, "GET") == 0) {
         p = strtok(NULL, " ");
         filename = std::string(p + 1); // Skip the leading '/'
-	//make the default file the index file for less typing
-	if (filename == "") {
-		filename = "index.html";
-	}
+        //make the default file the index file for less typing
+        if (filename == "") {
+            filename = "index.html";
+     }
     }
+
     else if (p != nullptr && strcmp(p, "POST") == 0) {
     // Extract filename from request headers
-    std::string request(buffer); // Convert buffer to string for easier manipulation
-    size_t filenameStart = request.find("Select File");
-    if (filenameStart != std::string::npos) { // Check if field name is found
-        filenameStart = request.find("filename=\"", filenameStart) + 10;
-        size_t filenameEnd = request.find("\"", filenameStart);
-        if (filenameStart != std::string::npos && filenameEnd != std::string::npos) { // Check if both delimiters are found
-            std::string filename = request.substr(filenameStart, filenameEnd - filenameStart);
-            
-            // Read until the end of the request body to get file content
-            size_t contentStart = request.find("\r\n\r\n");
-            if (contentStart != std::string::npos) { // Check if content delimiter is found
-                contentStart += 4; // Move past the delimiter to the start of content
-                std::string content = request.substr(contentStart);
+    size_t contentTypeStart = requestData.find("Content-Type:");
+    size_t contentTypeEnd = requestData.find("\r\n", contentTypeStart);
+    if (contentTypeStart != std::string::npos && contentTypeEnd != std::string::npos) {
+        std::string contentType = requestData.substr(contentTypeStart, contentTypeEnd - contentTypeStart);
+        std::cout << "Content-Type: " << contentType << std::endl; // Debug statement
+        size_t boundaryStart = contentType.find("boundary=") + 9; // Skip "boundary="
+        size_t boundaryEnd = contentType.find("\r\n", boundaryStart);
+        std::string boundary = requestData.substr(boundaryStart, boundaryEnd - boundaryStart);
 
+        // Split request into parts using boundary
+        std::vector<std::string> parts;
+        size_t currentPos = requestData.find("\r\n\r\n") + 4; // Skip headers
+        while (true) {
+            size_t partEnd = requestData.find("\r\n--" + boundary, currentPos);
+            if (partEnd != std::string::npos) {
+                parts.push_back(requestData.substr(currentPos, partEnd - currentPos));
+                currentPos = partEnd + boundary.size() + 4; // Skip the boundary and CRLF
+
+                // Check if this is the last part (with "--" after the boundary)
+                if (requestData.substr(partEnd - 2, 2) == "--") {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        // Process each part to extract filename and content
+        for (const auto& part : parts) {
+            size_t filenameStart = part.find("filename=\"") + 10;
+            size_t filenameEnd = part.find("\"", filenameStart);
+            if (filenameStart != std::string::npos && filenameEnd != std::string::npos) {
+                std::string filename = part.substr(filenameStart, filenameEnd - filenameStart);
+                // Skip content-type line and CRLF
+                size_t contentStart = part.find("\r\n\r\n") + 4;
                 // Save file
                 std::ofstream outputFile(filename, std::ios::binary);
                 if (outputFile) {
-                    outputFile.write(content.c_str(), content.size());
+                    outputFile.write(part.c_str() + contentStart, part.size() - contentStart);
                     outputFile.close();
                     std::cout << "File successfully saved as: " << filename << std::endl;
-                } 
-		else {
+                } else {
                     std::cerr << "Error: Unable to save file " << filename << std::endl;
                 }
-            } 
-	    else {
-                std::cerr << "Error: No content found in POST request" << std::endl;
+            } else {
+                std::cerr << "Error: Unable to extract filename from part" << std::endl;
             }
-        } 
-	else {
-            std::cerr << "Error: Filename not found in POST request" << std::endl;
         }
-    } 
-    else {
-        std::cerr << "Error: Field name not found in POST request" << std::endl;
+    } else {
+        std::cerr << "Error: Unable to extract Content-Type header" << std::endl;
     }
 
     // Send response to client
@@ -96,13 +113,6 @@ void handleRequest(int clientSocket) {
     close(clientSocket);
     return;
 }
-	
-    //Acc send the client a response
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-    send(clientSocket, response.c_str(), response.size(), 0);
-    close(clientSocket);
-    return;
-    
     // Open the requested file
     std::ifstream file(filename);
     if (!file) {
@@ -131,8 +141,9 @@ void handleRequest(int clientSocket) {
     close(clientSocket);
 }
 
+
 int main() {
-    chroot("/home/Madoka/Downloads/TestingCpp");
+    chroot("/home/Lori/recoveryTestingCpp");
     // Create socket
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket == -1) {
@@ -173,5 +184,4 @@ int main() {
 
     return 0;
 }
-
 
