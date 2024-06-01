@@ -13,6 +13,68 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <regex>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <vector>
+#include <future>
+#include <queue>
+#include <functional>
+#include <condition_variable>
+
+class ThreadPool {
+    //I have no idea how threading works
+public:
+    ThreadPool(size_t numThreads);
+    ~ThreadPool();
+    void enqueue(std::function<void()> task);
+
+private:
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queueMutex;
+    std::condition_variable condition;
+    std::atomic<bool> stop;
+    void workerThread();
+};
+
+ThreadPool::ThreadPool(size_t numThreads) : stop(false) {
+    for (size_t i = 0; i < numThreads; ++i) {
+        workers.emplace_back(&ThreadPool::workerThread, this);
+    }
+}
+
+ThreadPool::~ThreadPool() {
+    stop.store(true);
+    condition.notify_all();
+    for (std::thread &worker : workers) {
+        worker.join();
+    }
+}
+
+void ThreadPool::enqueue(std::function<void()> task) {
+    {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        tasks.push(std::move(task));
+    }
+    condition.notify_one();
+}
+
+void ThreadPool::workerThread() {
+    while (!stop.load()) {
+        std::function<void()> task;
+        {
+            std::unique_lock<std::mutex> lock(queueMutex);
+            condition.wait(lock, [this] { return stop.load() || !tasks.empty(); });
+            if (stop.load() && tasks.empty()) {
+                return;
+            }
+            task = std::move(tasks.front());
+            tasks.pop();
+        }
+        task();
+    }
+}
 
 const size_t MAX_FILE_SIZE = 26214400; //limits to 25MB
 
@@ -32,8 +94,10 @@ void handleRequest(int clientSocket) {
         if (bytesRead == 0) {
             break;
         }
+
         // Append received data to requestData string
         requestData.append(buffer, bytesRead);
+
         // Check if the requestData string contains the complete request
         if (requestData.find("\r\n\r\n") != std::string::npos) {
             break;
@@ -82,14 +146,17 @@ void handleRequest(int clientSocket) {
                 break;
             }
         }
+
         // Process each part to extract filename and content
         for (const auto& part : parts) {
             size_t filenameStart = part.find("filename=\"") + 10;
             size_t filenameEnd = part.find("\"", filenameStart);
             if (filenameStart != std::string::npos && filenameEnd != std::string::npos) {
                 std::string filename = part.substr(filenameStart, filenameEnd - filenameStart);
+                
                 // Skip content-type line and CRLF
                 size_t contentStart = part.find("\r\n\r\n") + 4;
+                
                 // Save file
                 std::ofstream outputFile(filename, std::ios::binary);
                 if (outputFile) {
@@ -113,6 +180,7 @@ void handleRequest(int clientSocket) {
     close(clientSocket);
     return;
 }
+
     // Open the requested file
     std::ifstream file(filename);
     if (!file) {
@@ -159,6 +227,7 @@ int main() {
     address.sin_port = htons(8080);
     if (bind(serverSocket, (struct sockaddr *)&address, addrlen) == -1) {
         perror("Error binding socket");
+        close(serverSocket);
         return 1;
     }
     //Dont forget to check your firewall isnt blocking your port from porting (sudo ufw allow 8080)
@@ -166,10 +235,13 @@ int main() {
     // Listen for incoming connections
     if (listen(serverSocket, 10) == -1) {
         perror("Error listening");
+        close (serverSocket);
         return 1;
     }
 
     std::cout << "Grabbing info from port 8080...\n";
+
+    ThreadPool threadPool(4);  // Create a thread pool with 4 worker threads
 
     // Accept incoming connections and handle requests
     while (true) {
@@ -179,8 +251,12 @@ int main() {
             continue;
         }
 
-        handleRequest(clientSocket);
+        // Enqueue the handling of the client request to the thread pool
+        threadPool.enqueue([clientSocket]() { handleRequest(clientSocket); });
     }
+
+    return 0;
+}
 
     return 0;
 }
