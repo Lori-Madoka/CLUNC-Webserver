@@ -3,7 +3,7 @@
 //Clunc Likes Unassembling Nearly Ceaselessly
 //Some almalgamation of code from tutorials and example codes stitched together to kinda host a web server
 //Duct-Taped by Lori_Madoka
-//Oh yh you may need to compile it if ur  acc reading this so like: g++ -o CLUNC CLUNC.cpp -lstdc++
+//Oh yh you may need to compile it if ur  acc reading this so like: g++ -o testclunc testclunc.cpp -lstdc++
 
 #include <iostream>
 #include <sstream>
@@ -21,6 +21,8 @@
 #include <queue>
 #include <functional>
 #include <condition_variable>
+#include <map>
+#include <string>
 
 class ThreadPool {
     //I have no idea how threading works
@@ -119,72 +121,77 @@ void handleRequest(int clientSocket) {
     }
 
     else if (p != nullptr && strcmp(p, "POST") == 0) {
-    // Extract filename from request headers
-    size_t contentTypeStart = requestData.find("Content-Type:");
-    size_t contentTypeEnd = requestData.find("\r\n", contentTypeStart);
-    if (contentTypeStart != std::string::npos && contentTypeEnd != std::string::npos) {
-        std::string contentType = requestData.substr(contentTypeStart, contentTypeEnd - contentTypeStart);
-        std::cout << "Content-Type: " << contentType << std::endl; // Debug statement
-        size_t boundaryStart = contentType.find("boundary=") + 9; // Skip "boundary="
-        size_t boundaryEnd = contentType.find("\r\n", boundaryStart);
-        std::string boundary = requestData.substr(boundaryStart, boundaryEnd - boundaryStart);
-
-        // Split request into parts using boundary
-        std::vector<std::string> parts;
-        size_t currentPos = requestData.find("\r\n\r\n") + 4; // Skip headers
-        while (true) {
-            size_t partEnd = requestData.find("\r\n--" + boundary, currentPos);
-            if (partEnd != std::string::npos) {
-                parts.push_back(requestData.substr(currentPos, partEnd - currentPos));
-                currentPos = partEnd + boundary.size() + 4; // Skip the boundary and CRLF
-
-                // Check if this is the last part (with "--" after the boundary)
-                if (requestData.substr(partEnd - 2, 2) == "--") {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-
-        // Process each part to extract filename and content
-        for (const auto& part : parts) {
-            size_t filenameStart = part.find("filename=\"") + 10;
-            size_t filenameEnd = part.find("\"", filenameStart);
-            if (filenameStart != std::string::npos && filenameEnd != std::string::npos) {
-                std::string filename = part.substr(filenameStart, filenameEnd - filenameStart);
-                
-                // Skip content-type line and CRLF
-                size_t contentStart = part.find("\r\n\r\n") + 4;
-                
-                // Save file
-                std::ofstream outputFile(filename, std::ios::binary);
-                if (outputFile) {
-                    outputFile.write(part.c_str() + contentStart, part.size() - contentStart);
-                    outputFile.close();
-                    std::cout << "File successfully saved as: " << filename << std::endl;
+            p = strtok(NULL, " ");
+            if (p != nullptr && strcmp(p, "/upload") == 0) {
+                // Extract filename from request headers
+                size_t contentTypeStart = requestData.find("Content-Type:");
+                size_t contentTypeEnd = requestData.find("\r\n", contentTypeStart);
+                if (contentTypeStart != std::string::npos && contentTypeEnd != std::string::npos) {
+                    std::string contentType = requestData.substr(contentTypeStart, contentTypeEnd - contentTypeStart);
+                    std::cout << "Content-Type: " << contentType << std::endl; // Debug statement
+                    size_t boundaryStart = contentType.find("boundary=") + 9; // Skip "boundary="
+                    std::string boundary = contentType.substr(boundaryStart);
+    
+                    // Split request into parts using boundary
+                    std::vector<std::string> parts;
+                    size_t currentPos = requestData.find("\r\n\r\n") + 4; // Skip headers
+                    while (true) {
+                        size_t partEnd = requestData.find("\r\n--" + boundary, currentPos);
+                        if (partEnd != std::string::npos) {
+                            parts.push_back(requestData.substr(currentPos, partEnd - currentPos));
+                            currentPos = partEnd + boundary.size() + 4; // Skip the boundary and CRLF
+    
+                            // Check if this is the last part (with "--" after the boundary)
+                            if (requestData.substr(partEnd - 2, 2) == "--") {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+    
+                    // Process each part to extract filename and content
+                    for (const auto& part : parts) {
+                        size_t filenameStart = part.find("filename=\"") + 10;
+                        size_t filenameEnd = part.find("\"", filenameStart);
+                        if (filenameStart != std::string::npos && filenameEnd != std::string::npos) {
+                            std::string filename = part.substr(filenameStart, filenameEnd - filenameStart);
+    
+                            // Skip content-type line and CRLF
+                            size_t contentStart = part.find("\r\n\r\n") + 4;
+    
+                            // Save file
+                            std::ofstream outputFile(filename, std::ios::binary);
+                            if (outputFile) {
+                                outputFile.write(part.c_str() + contentStart, part.size() - contentStart);
+                                outputFile.close();
+                                std::cout << "File successfully saved as: " << filename << std::endl;
+                            } else {
+                                std::cerr << "Error: Unable to save file " << filename << std::endl;
+                            }
+                        } else {
+                            std::cerr << "Error: Unable to extract filename from part" << std::endl;
+                        }
+                    }
                 } else {
-                    std::cerr << "Error: Unable to save file " << filename << std::endl;
+                    std::cerr << "Error: Unable to extract Content-Type header" << std::endl;
                 }
-            } else {
-                std::cerr << "Error: Unable to extract filename from part" << std::endl;
+    
+                // Send response to client
+                std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+                send(clientSocket, response.c_str(), response.size(), 0);
+                close(clientSocket);
+                return;
             }
         }
-    } else {
-        std::cerr << "Error: Unable to extract Content-Type header" << std::endl;
-    }
-
-    // Send response to client
-    std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-    send(clientSocket, response.c_str(), response.size(), 0);
-    close(clientSocket);
-    return;
-}
 
     // Open the requested file
     std::ifstream file(filename);
     if (!file) {
         std::cerr << "Error: Unable to open file " << filename << std::endl;
+        std::string httpResponse = "HTTP/1.1 404 Not Found\r\n\r\n";
+        send(clientSocket, httpResponse.c_str(), httpResponse.size(), 0);
+        close(clientSocket);
         return;
     }
 
@@ -192,11 +199,71 @@ void handleRequest(int clientSocket) {
     std::stringstream contentStream;
     contentStream << file.rdbuf();
     std::string content = contentStream.str();
+    //std::string mimeType = getMimeType(filename);
 
     // Prep the HTTP response
     std::string httpResponse = "HTTP/1.1 200 OK\r\n";
     httpResponse += "Content-Length: " + std::to_string(content.size()) + "\r\n";
-    httpResponse += "Content-Type: text/html\r\n\r\n";
+    //grab the  string of the file exptension for comparison later
+    int dotpos = 0;
+    char c;
+    std::string ext;
+    while (dotpos<filename.length()){
+        std::cout << "checking character of filename: ";
+        if (filename[dotpos] != '.'){
+            ext+=filename[dotpos];
+        }
+        else{
+            ext = "";
+        }
+        dotpos+=1;
+        std::cout << ext;
+        std::cout << "" << std::endl;
+    }
+    std::cout << "" << std::endl;
+
+    std::cout << ":" << ext << ":" << std::endl;
+    std::cout << "length of ext is " << ext.length() << std::endl;
+
+    //printf("the magic character is %d\n", ext.c_str()[3]);
+    //result of having bad loop in  the dotfinder.
+
+
+
+    std::string ico = "ico";
+    //ext now has definition yippeeee
+    //but it is  being frustration 
+    //will just turn it into a char
+    
+    if (ext == "ico"){
+        std::cout << "entered ico selection" << std::endl;
+        httpResponse += "Content-Type: image/x-icon\r\n\r\n";
+    }
+    else if (ext == "mkv"){
+        std::cout << "eneteresthe video yippeeee" << std::endl;
+        httpResponse += "Content-Type: video/x-matroska\r\n\r\n";
+    }
+    else if (ext == "jpeg" || "jpg"){
+        std::cout << "entered jpeg selection" << std::endl;
+        httpResponse += "Content-Type: image/jpeg\r\n\r\n";
+    }
+    else if (ext == "apng"){
+        std::cout << "entered apng selection" << std::endl;
+        httpResponse += "Content-Type: image/apng\r\n\r\n";
+    }
+    else if (ext == ""){
+        std::cout << "entered png selection" << std::endl;
+        httpResponse += "Content-Type: image/png\r\n\r\n";
+    }
+    else if (ext == "pdf"){
+        std::cout << "entered pdf selection" << std::endl;
+        httpResponse += "Content-Type: application/pdf\r\n\r\n";
+    }
+    else{
+        std::cout << "Entered standard selection" << std::endl;
+        httpResponse += "Content-Type: text/html\r\n\r\n";
+        //"Content-Type: text/html\r\n\r\n"
+    }
     httpResponse += content;
 
     // Send HTTP response to the client
@@ -257,3 +324,4 @@ int main() {
 
     return 0;
 }
+
