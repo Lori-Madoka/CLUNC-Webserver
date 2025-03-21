@@ -239,11 +239,7 @@ void handleRequest(int clientSocket) {
         std::cout << "entered ico selection" << std::endl;
         httpResponse += "Content-Type: image/x-icon\r\n\r\n";
     }
-    else if (ext == "mkv"){
-        std::cout << "eneteresthe video yippeeee" << std::endl;
-        httpResponse += "Content-Type: video/x-matroska\r\n\r\n";
-    }
-    else if (ext == "jpeg" || "jpg"){
+    else if (ext == "jpeg" || ext == "jpg"){
         std::cout << "entered jpeg selection" << std::endl;
         httpResponse += "Content-Type: image/jpeg\r\n\r\n";
     }
@@ -258,6 +254,10 @@ void handleRequest(int clientSocket) {
     else if (ext == "pdf"){
         std::cout << "entered pdf selection" << std::endl;
         httpResponse += "Content-Type: application/pdf\r\n\r\n";
+    }
+    else if (ext == "mp4"){
+    	std::cout << "entered mp4 selection" << std::endl;
+    	httpResponse += "Content-Type: video/mp4\r\n\r\n";
     }
     else{
         std::cout << "Entered standard selection" << std::endl;
